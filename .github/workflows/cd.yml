@@ -1,7 +1,6 @@
 name: cd
-# Al hacer commit en main: construye la imagen EN EL PC (runner propio, usa el caché de Docker), la sube a GHCR
-# y reinicia el servicio en su servidor por SSH. Requiere el runner encendido (Escritorio\iniciar-runners.bat) y Docker Desktop abierto.
-# Secretos del repositorio: SSH_HOST, SSH_USER, SSH_KEY
+# Al hacer commit en main: construye la imagen EN EL PC (runner propio, usa el caché de Docker), la sube al registro
+# y reinicia el servicio en el clúster GKE de GCP. Requiere el runner encendido (Escritorio\iniciar-runners.bat) y Docker Desktop abierto.
 on:
   workflow_dispatch:
   push:
@@ -19,35 +18,34 @@ jobs:
       run:
         shell: C:/gitbash/bin/bash.exe --noprofile --norc -e -o pipefail {0}
     env:
-      SSH_KEY: ${{ secrets.SSH_KEY }}
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-      SSH_USER: ${{ secrets.SSH_USER }}
+      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      GCP_PROJECT: comedor-universitario-514103
     steps:
       - uses: actions/checkout@v4
-
       - name: Docker aislado (cada runner con su propia sesión)
         run: |
           DC="$RUNNER_TEMP/docker"; DCU="$(cygpath -u "$DC")"
           mkdir -p "$DCU" && cp -r ~/.docker/. "$DCU/" 2>/dev/null || true
           [ -f "$DCU/config.json" ] && sed -i '/credsStore/d;/credHelpers/d' "$DCU/config.json" || echo '{}' > "$DCU/config.json"
           echo "DOCKER_CONFIG=$DC" >> "$GITHUB_ENV"
+
       - name: Login en GHCR
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Construir y subir la imagen
         run: |
           OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr 'A-Z' 'a-z')
           IMG=ghcr.io/$OWNER/pagos-tickets-service
-          docker build -t $IMG:latest -t $IMG:${{ github.sha }} --label org.opencontainers.image.source=https://github.com/${{ github.repository }} .
+          docker build -t $IMG:latest --label org.opencontainers.image.source=https://github.com/${{ github.repository }} .
           docker push $IMG:latest
-          docker push $IMG:${{ github.sha }}
-
-      - name: Desplegar por SSH
+      - name: Reiniciar en GKE
         run: |
-          OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr 'A-Z' 'a-z')
-          printf '%s\n' "$SSH_KEY" > key && chmod 600 key
-          SSH="ssh -i key -o StrictHostKeyChecking=no -o ConnectTimeout=20 $SSH_USER@$SSH_HOST"
-          echo "${{ secrets.GITHUB_TOKEN }}" | $SSH "docker login ghcr.io -u ${{ github.actor }} --password-stdin"
-          $SSH "cd ~/comedor && docker compose --env-file .env --env-file .env.secrets --env-file .env.ec2 -f docker-compose.yml -f docker-compose.ec2.yml pull pagos-tickets-service && docker compose --env-file .env --env-file .env.secrets --env-file .env.ec2 -f docker-compose.yml -f docker-compose.ec2.yml up -d --no-deps pagos-tickets-service && docker image prune -f >/dev/null"
-          rm -f key
+          export MSYS_NO_PATHCONV=1
+          KEY="$(cygpath -w "$RUNNER_TEMP")\\gcp.json"; printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/gcp.json"
+          export CLOUDSDK_CONFIG="$(cygpath -w "$RUNNER_TEMP")\\gcloud" KUBECONFIG="$(cygpath -w "$RUNNER_TEMP")\\kube.yaml"
+          cmd //c "gcloud auth activate-service-account --key-file=$KEY" >/dev/null 2>&1
+          cmd //c "gcloud container clusters get-credentials comedor-gke --zone us-central1-a --project $GCP_PROJECT" >/dev/null 2>&1
+          TOKEN=$(cmd //c "gcloud auth print-access-token" 2>/dev/null | tr -d '\r')
+          kubectl --token="$TOKEN" -n comedor rollout restart deploy/pagos-tickets-service
+          kubectl --token="$TOKEN" -n comedor rollout status deploy/pagos-tickets-service --timeout=600s
+          rm -f "$RUNNER_TEMP/gcp.json"
