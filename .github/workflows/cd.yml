@@ -43,9 +43,9 @@ jobs:
           export MSYS_NO_PATHCONV=1
           KEY="$(cygpath -w "$RUNNER_TEMP")\\gcp.json"; printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/gcp.json"
           export CLOUDSDK_CONFIG="$(cygpath -w "$RUNNER_TEMP")\\gcloud" KUBECONFIG="$(cygpath -w "$RUNNER_TEMP")\\kube.yaml"
-          cmd //c "gcloud auth activate-service-account --key-file=$KEY" >/dev/null 2>&1
-          cmd //c "gcloud container clusters get-credentials comedor-gke --zone us-central1-a --project $GCP_PROJECT" >/dev/null 2>&1
-          TOKEN=$(cmd //c "gcloud auth print-access-token" 2>/dev/null | tr -d '\r')
+          cmd /c "gcloud auth activate-service-account --key-file=$KEY" >/dev/null 2>&1
+          cmd /c "gcloud container clusters get-credentials comedor-gke --zone us-central1-a --project $GCP_PROJECT" >/dev/null 2>&1
+          TOKEN=$(cmd /c "gcloud auth print-access-token" 2>/dev/null | tr -d '\r')
           kubectl --token="$TOKEN" -n comedor rollout restart deploy/pagos-tickets-service
           kubectl --token="$TOKEN" -n comedor rollout status deploy/pagos-tickets-service --timeout=600s
           rm -f "$RUNNER_TEMP/gcp.json"
