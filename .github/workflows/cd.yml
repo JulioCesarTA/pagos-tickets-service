@@ -1,37 +1,41 @@
 name: cd
-# Secretos: GCP_WIP, GCP_SA, GCP_REGION, GCP_PROJECT, INFRA_REPO_TOKEN
+# Al hacer commit en main: construye la imagen en GitHub, la sube a GHCR y reinicia el servicio en su servidor por SSH.
+# Secretos del repositorio: SSH_HOST, SSH_USER, SSH_KEY
 on:
   workflow_dispatch:
   push:
     branches: [main]
+permissions:
+  contents: read
+  packages: write
 jobs:
-  deploy:
+  desplegar:
     runs-on: ubuntu-latest
-    permissions: { id-token: write, contents: read }
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - name: Dueño en minúsculas
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+      - uses: docker/login-action@v3
         with:
-          repository: JulioCesarTA/comedor-infra
-          token: ${{ secrets.INFRA_REPO_TOKEN }}
-          path: infra-repo
-      - uses: google-github-actions/auth@v2
-        with: { workload_identity_provider: '${{ secrets.GCP_WIP }}', service_account: '${{ secrets.GCP_SA }}' }
-      - uses: google-github-actions/setup-gcloud@v2
-      - name: Configure Docker auth for GAR
-        run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
-      - name: Build & push
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ env.OWNER }}/pagos-tickets-service:latest
+            ghcr.io/${{ env.OWNER }}/pagos-tickets-service:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+      - name: Desplegar por SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
         run: |
-          IMG=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/comedor-uagrm/pagos-tickets-service:${{ github.sha }}
-          docker build -t $IMG .
-          docker push $IMG
-      - name: GKE credentials
-        run: gcloud container clusters get-credentials gke-comedor --region ${{ secrets.GCP_REGION }}
-      - name: kubectl apply
-        run: |
-          export GAR_REGISTRY=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/comedor-uagrm
-          export IMAGE_TAG=${{ github.sha }}
-          export GCP_PROJECT=${{ secrets.GCP_PROJECT }}
-          export CLOUD_SQL_REGION=${{ secrets.GCP_REGION }}
-          export CLOUD_SQL_INSTANCE=pagos-pg
-          envsubst < infra-repo/infra/k8s/gcp/pagos-tickets-service/deployment.yaml | kubectl apply -f -
+          install -m 600 /dev/null key && printf '%s\n' "$SSH_KEY" > key
+          SSH="ssh -i key -o StrictHostKeyChecking=no -o ConnectTimeout=20 $SSH_USER@$SSH_HOST"
+          echo "${{ secrets.GITHUB_TOKEN }}" | $SSH "docker login ghcr.io -u ${{ github.actor }} --password-stdin"
+          $SSH "cd ~/comedor && docker compose --env-file .env --env-file .env.secrets --env-file .env.ec2 -f docker-compose.yml -f docker-compose.ec2.yml pull pagos-tickets-service && docker compose --env-file .env --env-file .env.secrets --env-file .env.ec2 -f docker-compose.yml -f docker-compose.ec2.yml up -d --no-deps pagos-tickets-service && docker image prune -f >/dev/null"
