@@ -6,6 +6,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+permissions:
+  contents: read
+  packages: write
 concurrency:
   group: cd
   cancel-in-progress: true
