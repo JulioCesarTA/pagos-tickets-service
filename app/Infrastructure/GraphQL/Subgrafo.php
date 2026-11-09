@@ -21,7 +21,7 @@ final class Subgrafo
 {
     /** Lo que el gateway lee con `_service { sdl }` para componer el supergrafo. */
     public const SDL = <<<'GRAPHQL'
-    extend schema @link(url: "https://specs.apollo.dev/federation/v2.3", import: ["@key"])
+    extend schema @link(url: "https://specs.apollo.dev/federation/v2.3", import: ["@key", "@requires", "@external"])
 
     type Pago @key(fields: "id") {
       id: ID!
@@ -36,7 +36,8 @@ final class Subgrafo
 
     type Estudiante @key(fields: "id") {
       id: ID!
-      pagos: [Pago!]!
+      registroUniv: String! @external
+      pagos: [Pago!]! @requires(fields: "registroUniv")
     }
 
     type Query {
@@ -48,6 +49,8 @@ final class Subgrafo
     /** El mismo esquema más lo que Federation exige para ejecutarse (_service y _entities). */
     private const EJECUTABLE = <<<'GRAPHQL'
     directive @key(fields: String!, resolvable: Boolean = true) repeatable on OBJECT
+    directive @requires(fields: String!) on FIELD_DEFINITION
+    directive @external on FIELD_DEFINITION
 
     scalar _Any
 
@@ -68,7 +71,8 @@ final class Subgrafo
 
     type Estudiante @key(fields: "id") {
       id: ID!
-      pagos: [Pago!]!
+      registroUniv: String! @external
+      pagos: [Pago!]! @requires(fields: "registroUniv")
     }
 
     type Query {
@@ -110,6 +114,16 @@ final class Subgrafo
         return array_map([self::class, 'fila'], $this->consultar->listar($estudianteId));
     }
 
+    /** Un pago está a nombre del id interno del estudiante o, si entró por el portal o Telegram, de su matrícula. */
+    private function pagosDelEstudiante(string $id, string $registro): array
+    {
+        $pagos = [];
+        foreach (array_unique(array_filter([$id, $registro])) as $clave) {
+            foreach ($this->pagosDe($clave) as $p) $pagos[$p['id']] = $p;
+        }
+        return array_values($pagos);
+    }
+
     private function entidad(array $r): ?array
     {
         if (($r['__typename'] ?? '') === 'Pago') {
@@ -117,8 +131,10 @@ final class Subgrafo
             return $p ? self::fila($p) : null;
         }
         if (($r['__typename'] ?? '') === 'Estudiante') {
-            $id = (string)($r['id'] ?? '');       // cada pago guarda el id interno del estudiante, no su registro
-            return ['__typename' => 'Estudiante', 'id' => $id, 'pagos' => fn () => $this->pagosDe($id)];
+            $id = (string)($r['id'] ?? '');
+            $registro = (string)($r['registroUniv'] ?? '');
+            return ['__typename' => 'Estudiante', 'id' => $id, 'registroUniv' => $registro,
+                'pagos' => fn () => $this->pagosDelEstudiante($id, $registro)];
         }
         return null;
     }

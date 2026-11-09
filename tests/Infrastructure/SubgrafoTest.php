@@ -17,7 +17,7 @@ final class SubgrafoTest extends TestCase
             private function uno(string $id, string $estudiante): Pago
             { return new Pago($id, 'r1', $estudiante, 10.0, Pago::METODO_EFECTIVO, Pago::ESTADO_COBRADO, new \DateTimeImmutable('2026-11-09T10:00:00+00:00'), 't1'); }
             public function listar(?string $estudianteId = null): array
-            { return $estudianteId === null ? [$this->uno('p1', '220567'), $this->uno('p2', '999')] : [$this->uno('p1', $estudianteId)]; }
+            { return $estudianteId === null ? [$this->uno('p1', '220567'), $this->uno('p2', '999')] : [$this->uno('p-' . $estudianteId, $estudianteId)]; }
             public function ver(string $pagoId): ?Pago { return $pagoId === 'p1' ? $this->uno('p1', '220567') : null; }
         };
         return new Subgrafo($consultar);
@@ -43,11 +43,11 @@ final class SubgrafoTest extends TestCase
     public function test_extiende_la_entidad_estudiante_de_comensales(): void
     {
         $r = $this->subgrafo()->ejecutar(
-            'query($r: [_Any!]!) { _entities(representations: $r) { ... on Estudiante { id pagos { id estudianteId } } ... on Pago { metodo } } }',
-            ['r' => [['__typename' => 'Estudiante', 'id' => 'e-1'], ['__typename' => 'Pago', 'id' => 'p1']]],
+            'query($r: [_Any!]!) { _entities(representations: $r) { ... on Estudiante { id registroUniv pagos { id estudianteId } } ... on Pago { metodo } } }',
+            ['r' => [['__typename' => 'Estudiante', 'id' => 'e-1', 'registroUniv' => '220567'], ['__typename' => 'Pago', 'id' => 'p1']]],
         );
         $this->assertArrayNotHasKey('errors', $r);
-        $this->assertSame('e-1', $r['data']['_entities'][0]['pagos'][0]['estudianteId']);
+        $this->assertSame(['e-1', '220567'], array_column($r['data']['_entities'][0]['pagos'], 'estudianteId'));
         $this->assertSame('efectivo', $r['data']['_entities'][1]['metodo']);
     }
 }
