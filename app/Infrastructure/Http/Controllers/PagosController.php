@@ -48,14 +48,14 @@ final class PagosController
         return $res->withHeader('Content-Type', 'application/json');
     }
 
-    /** GET /pagos → todos los pagos (solo lectura) para el generador de reportes. */
+    /** GET /pagos → todos los pagos (solo lectura) para el generador de reportes. GET /pagos?estudiante=X → solo los de X (Mis reservas). */
     public function listar(Request $req, Response $res): Response
     {
         $filas = array_map(fn($p) => [
             'id' => $p->id, 'reservaId' => $p->reservaId, 'estudiante' => $p->estudianteId,
             'monto' => $p->monto, 'metodo' => $p->metodo, 'estado' => $p->estado,
             'ticketId' => $p->ticketId, 'fecha' => $p->createdAt->format(DATE_ATOM),
-        ], $this->consultar->listar());
+        ], $this->consultar->listar((string)($req->getQueryParams()['estudiante'] ?? '')));
         $res->getBody()->write(json_encode($filas));
         return $res->withHeader('Content-Type', 'application/json');
     }

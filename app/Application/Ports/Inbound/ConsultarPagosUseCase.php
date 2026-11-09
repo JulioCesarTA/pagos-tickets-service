@@ -7,7 +7,7 @@ use App\Domain\Pago;
 
 interface ConsultarPagosUseCase
 {
-    /** @return Pago[] */
-    public function listar(): array;
+    /** @return Pago[] todos, o solo los del estudiante indicado */
+    public function listar(?string $estudianteId = null): array;
     public function ver(string $pagoId): ?Pago;
 }

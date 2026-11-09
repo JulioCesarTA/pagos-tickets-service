@@ -12,4 +12,7 @@ interface PagoRepositoryPort
     public function findByReservaId(string $reservaId): ?Pago;
     /** @return Pago[] todos los pagos, del más antiguo al más reciente */
     public function todos(): array;
+
+    /** @return Pago[] los pagos de un estudiante, del más antiguo al más reciente */
+    public function delEstudiante(string $estudianteId): array;
 }

@@ -53,6 +53,13 @@ final class PdoPagoRepository implements PagoRepositoryPort
         return array_map([$this, 'mapar'], $this->pdo->query('SELECT * FROM pagos ORDER BY created_at')->fetchAll(PDO::FETCH_ASSOC));
     }
 
+    public function delEstudiante(string $estudianteId): array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM pagos WHERE estudiante_id = :e ORDER BY created_at');
+        $stmt->execute([':e' => $estudianteId]);
+        return array_map([$this, 'mapar'], $stmt->fetchAll(PDO::FETCH_ASSOC));
+    }
+
     public function findByReservaId(string $reservaId): ?Pago
     {
         $stmt = $this->pdo->prepare('SELECT * FROM pagos WHERE reserva_id = :r');
