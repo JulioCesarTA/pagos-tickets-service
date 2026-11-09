@@ -60,5 +60,7 @@ return function (ContainerBuilder $b): void {
         ConsultarPagosUseCase::class => DI\autowire(ConsultarPagosService::class),
         ObtenerFacturaUseCase::class => DI\autowire(ObtenerFacturaService::class),
         VerificarPagoUseCase::class => DI\autowire(VerificarPagoService::class),
+        \App\Application\Ports\Outbound\ObligacionRepositoryPort::class => DI\autowire(\App\Infrastructure\Adapters\Persistence\postgres\PdoObligacionRepository::class),
+        \App\Application\Ports\Inbound\ObligacionesProveedorUseCase::class => DI\autowire(\App\Application\Services\ObligacionesProveedorService::class),
     ]);
 };

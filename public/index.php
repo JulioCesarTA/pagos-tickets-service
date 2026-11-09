@@ -6,6 +6,7 @@ require __DIR__ . '/../vendor/autoload.php';
 use DI\ContainerBuilder;
 use Slim\Factory\AppFactory;
 use App\Infrastructure\Http\Controllers\PagosController;
+use App\Infrastructure\Http\Controllers\ProveedoresController;
 use App\Infrastructure\GraphQL\Subgrafo;
 use App\Infrastructure\Mcp\McpServer;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -31,6 +32,9 @@ $app->get('/pagos/verificar/{referencia}', [PagosController::class, 'verificar']
 $app->get('/pagos', [PagosController::class, 'listar']);
 $app->get('/pagos/recibo/{referencia}', [PagosController::class, 'recibo']);
 $app->get('/pagos/{id}',[PagosController::class, 'ver']);
+
+$app->post('/proveedores/pagos', [ProveedoresController::class, 'registrar']);
+$app->get('/proveedores/pagos', [ProveedoresController::class, 'listar']);
 
 // Subgrafo de Apollo Federation: lo compone el gateway GraphQL del back-office (SPEC §4)
 $app->post('/graphql', function (Request $req, Response $res) use ($container) {
