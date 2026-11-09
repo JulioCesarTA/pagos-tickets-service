@@ -60,14 +60,6 @@ final class PdoPagoRepository implements PagoRepositoryPort
         return array_map([$this, 'mapar'], $stmt->fetchAll(PDO::FETCH_ASSOC));
     }
 
-    public function findByReservaId(string $reservaId): ?Pago
-    {
-        $stmt = $this->pdo->prepare('SELECT * FROM pagos WHERE reserva_id = :r');
-        $stmt->execute([':r' => $reservaId]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ? $this->mapar($row) : null;
-    }
-
     private function mapar(array $r): Pago
     {
         return new Pago(

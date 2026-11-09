@@ -17,7 +17,6 @@ final class ConsultasTest extends TestCase
             public function __construct(private array $datos) {}
             public function save(Pago $pago): void { $this->datos[] = $pago; }
             public function findById(string $id): ?Pago { foreach ($this->datos as $p) if ($p->id === $id) return $p; return null; }
-            public function findByReservaId(string $reservaId): ?Pago { foreach ($this->datos as $p) if ($p->reservaId === $reservaId) return $p; return null; }
             public function todos(): array { return $this->datos; }
             public function delEstudiante(string $estudianteId): array { return array_values(array_filter($this->datos, fn ($p) => $p->estudianteId === $estudianteId)); }
         };
