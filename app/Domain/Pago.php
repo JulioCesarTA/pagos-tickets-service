@@ -33,6 +33,28 @@ final class Pago
         }
     }
 
+    /**
+     * Crea un pago nuevo, pendiente de cobro. Regla de negocio: con beca el estudiante no paga (monto 0).
+     */
+    public static function nuevo(
+        string $id,
+        string $reservaId,
+        string $estudianteId,
+        float $monto,
+        string $metodo,
+        \DateTimeImmutable $createdAt,
+    ): self {
+        return new self(
+            id: $id,
+            reservaId: $reservaId,
+            estudianteId: $estudianteId,
+            monto: $metodo === self::METODO_BECA ? 0.0 : $monto,
+            metodo: $metodo,
+            estado: self::ESTADO_PENDIENTE,
+            createdAt: $createdAt,
+        );
+    }
+
     public function cobrar(string $ticketId): void
     {
         if ($this->estado !== self::ESTADO_PENDIENTE) {

@@ -35,6 +35,26 @@ final class PagoTest extends TestCase
         $p->devolver();
     }
 
+    public function test_pago_nuevo_con_beca_no_paga(): void
+    {
+        $p = Pago::nuevo('p1', 'r1', 'e1', 12.5, Pago::METODO_BECA, new \DateTimeImmutable());
+        $this->assertSame(0.0, $p->monto);
+        $this->assertSame(Pago::ESTADO_PENDIENTE, $p->estado);
+        $this->assertNull($p->ticketId);
+    }
+
+    public function test_pago_nuevo_sin_beca_conserva_el_monto(): void
+    {
+        $this->assertSame(12.5, Pago::nuevo('p1', 'r1', 'e1', 12.5, Pago::METODO_QR, new \DateTimeImmutable())->monto);
+        $this->assertSame(7.0, Pago::nuevo('p2', 'r2', 'e2', 7.0, Pago::METODO_EFECTIVO, new \DateTimeImmutable())->monto);
+    }
+
+    public function test_pago_nuevo_valida_metodo_y_monto(): void
+    {
+        $this->expectException(\DomainException::class);
+        Pago::nuevo('p1', 'r1', 'e1', -1.0, Pago::METODO_EFECTIVO, new \DateTimeImmutable());
+    }
+
     public function test_metodo_invalido(): void
     {
         $this->expectException(\DomainException::class);

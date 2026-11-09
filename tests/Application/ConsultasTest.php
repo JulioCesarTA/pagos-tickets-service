@@ -3,12 +3,13 @@ declare(strict_types=1);
 
 namespace Tests\Application;
 
+use App\Application\Dto\{CobroQrResult, FacturaResult, VerificacionPagoResult};
 use App\Application\Ports\Outbound\{PagoRepositoryPort, PaymentGatewayPort};
 use App\Application\Services\{ConsultarPagosService, ObtenerFacturaService, VerificarPagoService};
 use App\Domain\Pago;
 use PHPUnit\Framework\TestCase;
 
-/** Los casos de uso se prueban solos: con adaptadores falsos, sin base de datos ni Stripe. */
+/** Los casos de uso se prueban solos: con adaptadores falsos, sin base de datos ni pasarela real. */
 final class ConsultasTest extends TestCase
 {
     private function repo(Pago ...$pagos): PagoRepositoryPort
@@ -25,10 +26,10 @@ final class ConsultasTest extends TestCase
     private function pasarela(): PaymentGatewayPort
     {
         return new class implements PaymentGatewayPort {
-            public function cobrarQr(float $monto, string $referencia): array { return ['ok' => true]; }
+            public function cobrarQr(float $monto, string $referencia): CobroQrResult { return CobroQrResult::exito($referencia); }
             public function devolver(string $referencia): bool { return true; }
-            public function verificarPago(string $referencia): array { return ['paid' => $referencia === 'pagada', 'status' => 'x']; }
-            public function facturaUrl(string $referencia): array { return $referencia === 'ok' ? ['url' => 'https://f', 'tipo' => 'factura'] : ['error' => 'sin factura']; }
+            public function verificarPago(string $referencia): VerificacionPagoResult { return new VerificacionPagoResult($referencia === 'pagada', 'x'); }
+            public function facturaUrl(string $referencia): FacturaResult { return $referencia === 'ok' ? FacturaResult::factura('https://f', null) : FacturaResult::noDisponible('sin factura'); }
         };
     }
 
@@ -54,8 +55,10 @@ final class ConsultasTest extends TestCase
 
     public function test_factura_y_verificacion_delegan_en_la_pasarela(): void
     {
-        $this->assertSame('factura', (new ObtenerFacturaService($this->pasarela()))->execute('ok')['tipo']);
-        $this->assertArrayHasKey('error', (new ObtenerFacturaService($this->pasarela()))->execute('otra'));
-        $this->assertTrue((new VerificarPagoService($this->pasarela()))->execute('pagada')['paid']);
+        $this->assertSame('factura', (new ObtenerFacturaService($this->pasarela()))->execute('ok')->tipo);
+        $sin = (new ObtenerFacturaService($this->pasarela()))->execute('otra');
+        $this->assertFalse($sin->disponible());
+        $this->assertSame('sin factura', $sin->error);
+        $this->assertTrue((new VerificarPagoService($this->pasarela()))->execute('pagada')->paid);
     }
 }

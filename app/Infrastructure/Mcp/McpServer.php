@@ -5,6 +5,7 @@ namespace App\Infrastructure\Mcp;
 
 use App\Application\Ports\Inbound\CobrarRacionUseCase;
 use App\Application\Ports\Inbound\ConsultarPagosUseCase;
+use App\Infrastructure\Presentation\PagosJsonMapper;
 
 /**
  * Servidor MCP (Model Context Protocol): JSON-RPC 2.0 sin estado. Es un adaptador de entrada más del hexágono:
@@ -31,8 +32,8 @@ final class McpServer
                     'monto' => ['type' => 'number', 'minimum' => 0],
                     'metodo' => ['type' => 'string', 'enum' => ['beca', 'qr_bancario', 'efectivo']],
                 ], 'required' => ['reservaId', 'estudianteId', 'monto', 'metodo']],
-                'accion' => fn (array $a) => $this->cobrar->execute(
-                    self::texto($a, 'reservaId'), self::texto($a, 'estudianteId'), (float)self::texto($a, 'monto'), self::texto($a, 'metodo')),
+                'accion' => fn (array $a) => PagosJsonMapper::cobro($this->cobrar->execute(
+                    self::texto($a, 'reservaId'), self::texto($a, 'estudianteId'), (float)self::texto($a, 'monto'), self::texto($a, 'metodo'))),
             ],
             'consultar_estado_pago' => [
                 'description' => 'Estado de un pago (pendiente, cobrado, devuelto o fallido), con su método, monto y ticket.',

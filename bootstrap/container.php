@@ -2,7 +2,8 @@
 declare(strict_types=1);
 
 use App\Application\Ports\Inbound\{CobrarRacionUseCase, ConsultarPagosUseCase, DevolverPagoUseCase, ObtenerFacturaUseCase, VerificarPagoUseCase};
-use App\Application\Ports\Outbound\{PagoRepositoryPort, TicketRepositoryPort, PaymentGatewayPort, EventBusPort};
+use App\Application\Ports\Outbound\{PagoRepositoryPort, TicketRepositoryPort, PaymentGatewayPort, EventBusPort, IdGeneratorPort};
+use App\Infrastructure\Adapters\Id\RamseyUuidGenerator;
 use App\Application\Services\{CobrarRacionService, ConsultarPagosService, DevolverPagoService, ObtenerFacturaService, VerificarPagoService};
 use App\Infrastructure\Adapters\Messaging\SnsEventBusAdapter;
 use App\Infrastructure\Adapters\Persistence\postgres\{PdoPagoRepository, PdoTicketRepository};
@@ -55,6 +56,7 @@ return function (ContainerBuilder $b): void {
             return new FakeQrBancarioAdapter();
         },
         EventBusPort::class => DI\autowire(SnsEventBusAdapter::class),
+        IdGeneratorPort::class => DI\autowire(RamseyUuidGenerator::class),
         CobrarRacionUseCase::class => DI\autowire(CobrarRacionService::class),
         DevolverPagoUseCase::class => DI\autowire(DevolverPagoService::class),
         ConsultarPagosUseCase::class => DI\autowire(ConsultarPagosService::class),

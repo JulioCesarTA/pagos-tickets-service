@@ -3,10 +3,10 @@ declare(strict_types=1);
 
 namespace App\Application\Services;
 
+use App\Application\Dto\{CobroRacionResult, DatosCobroPasarela};
 use App\Application\Ports\Inbound\CobrarRacionUseCase;
-use App\Application\Ports\Outbound\{PagoRepositoryPort, TicketRepositoryPort, PaymentGatewayPort, EventBusPort};
+use App\Application\Ports\Outbound\{EventBusPort, IdGeneratorPort, PagoRepositoryPort, PaymentGatewayPort, TicketRepositoryPort};
 use App\Domain\{Pago, Ticket};
-use Ramsey\Uuid\Uuid;
 
 /**
  * Paso 3 de la Saga 1: aplica beca o cobra, emite ticket.
@@ -18,38 +18,27 @@ final class CobrarRacionService implements CobrarRacionUseCase
         private readonly TicketRepositoryPort $tickets,
         private readonly PaymentGatewayPort $gateway,
         private readonly EventBusPort $bus,
+        private readonly IdGeneratorPort $ids,
     ) {}
 
-    public function execute(string $reservaId, string $estudianteId, float $monto, string $metodo, ?string $sagaId = null): array
+    public function execute(string $reservaId, string $estudianteId, float $monto, string $metodo, ?string $sagaId = null): CobroRacionResult
     {
-        $pago = new Pago(
-            id: Uuid::uuid4()->toString(),
-            reservaId: $reservaId,
-            estudianteId: $estudianteId,
-            monto: $metodo === Pago::METODO_BECA ? 0.0 : $monto,
-            metodo: $metodo,
-            estado: Pago::ESTADO_PENDIENTE,
-            createdAt: new \DateTimeImmutable(),
-        );
+        $pago = Pago::nuevo($this->ids->nuevoId(), $reservaId, $estudianteId, $monto, $metodo, new \DateTimeImmutable());
 
-        // Si es QR bancario, cobra en la pasarela externa (Stripe real o Fake).
-        $qrInfo = null;
+        // Si es QR bancario, cobra en la pasarela de pagos externa.
+        $pasarela = null;
         if ($metodo === Pago::METODO_QR) {
             $res = $this->gateway->cobrarQr($pago->monto, $pago->id);
-            if (!$res['ok']) {
+            if (!$res->ok) {
                 $pago->fallar();
                 $this->pagos->save($pago);
-                throw new \RuntimeException('Cobro QR fallido: ' . ($res['error'] ?? 'desconocido'));
+                throw new \RuntimeException('Cobro QR fallido: ' . ($res->error ?? 'desconocido'));
             }
-            $qrInfo = [
-                'paymentUrl' => $res['paymentUrl'] ?? null,
-                'qrDataUri' => $res['qrDataUri'] ?? null,
-                'gatewayRef' => $res['referencia'] ?? null,
-            ];
+            $pasarela = new DatosCobroPasarela($res->paymentUrl, $res->qrDataUri, $res->referencia);
         }
 
         $ticket = new Ticket(
-            id: Uuid::uuid4()->toString(),
+            id: $this->ids->nuevoId(),
             pagoId: $pago->id,
             reservaId: $reservaId,
             monto: $pago->monto,
@@ -71,11 +60,7 @@ final class CobrarRacionService implements CobrarRacionUseCase
             'ticketId' => $ticket->id,
         ]);
 
-        return [
-            'pagoId' => $pago->id,
-            'ticketId' => $ticket->id,
-            'estado' => $pago->estado,
-            'stripe' => $qrInfo,  // null si no es QR; con URL+QR si sí
-        ];
+        // $pasarela es null si no es QR; con URL + QR + referencia si sí.
+        return new CobroRacionResult($pago->id, $ticket->id, $pago->estado, $pasarela);
     }
 }

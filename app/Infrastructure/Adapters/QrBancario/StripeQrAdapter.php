@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Adapters\QrBancario;
 
+use App\Application\Dto\{CobroQrResult, FacturaResult, VerificacionPagoResult};
 use App\Application\Ports\Outbound\PaymentGatewayPort;
 use Endroid\QrCode\Builder\Builder;
 use Endroid\QrCode\Writer\PngWriter;
@@ -25,7 +26,7 @@ final class StripeQrAdapter implements PaymentGatewayPort
         $this->stripe = new StripeClient($secretKey);
     }
 
-    public function cobrarQr(float $monto, string $referencia): array
+    public function cobrarQr(float $monto, string $referencia): CobroQrResult
     {
         try {
             // Monto en centavos
@@ -61,39 +62,34 @@ final class StripeQrAdapter implements PaymentGatewayPort
             $qrDataUri = 'data:image/png;base64,' . base64_encode($qrPng->getString());
 
             $this->log->info("Stripe Payment Link creado: $link->url");
-            return [
-                'ok' => true,
-                'referencia' => $link->id,
-                'paymentUrl' => $link->url,
-                'qrDataUri' => $qrDataUri,
-            ];
+            return CobroQrResult::exito($link->id, $link->url, $qrDataUri);
         } catch (\Throwable $e) {
             $this->log->error("Stripe falló: " . $e->getMessage());
-            return ['ok' => false, 'error' => $e->getMessage()];
+            return CobroQrResult::fallo($e->getMessage());
         }
     }
 
     /**
      * Verifica contra Stripe si el Payment Link fue pagado.
-     * Devuelve ['paid'=>bool,'status'=>string,'amount'=>int].
+     * Devuelve paid, status, amount (centavos), sessionId y currency.
      * Un Payment Link puede generar múltiples checkout sessions:
      * si al menos una está 'paid' consideramos la referencia pagada.
      */
-    public function verificarPago(string $sessionId): array
+    public function verificarPago(string $sessionId): VerificacionPagoResult
     {
         try {
             $s = $this->stripe->checkout->sessions->retrieve($sessionId);
             $paid = ($s->payment_status ?? '') === 'paid';
-            return [
-                'paid' => $paid,
-                'status' => $s->payment_status ?? 'unknown',
-                'amount' => $s->amount_total ?? 0,
-                'sessionId' => $s->id,
-                'currency' => $s->currency ?? 'usd',
-            ];
+            return new VerificacionPagoResult(
+                paid: $paid,
+                status: $s->payment_status ?? 'unknown',
+                amount: $s->amount_total ?? 0,
+                sessionId: $s->id,
+                currency: $s->currency ?? 'usd',
+            );
         } catch (\Throwable $e) {
             $this->log->error("Stripe verificar falló: " . $e->getMessage());
-            return ['paid' => false, 'status' => 'error', 'error' => $e->getMessage()];
+            return VerificacionPagoResult::fallo($e->getMessage());
         }
     }
 
@@ -101,24 +97,24 @@ final class StripeQrAdapter implements PaymentGatewayPort
      * Factura hospedada de Stripe (si la sesión generó invoice) o, en su defecto,
      * el recibo del cargo. Solo existe cuando la sesión está pagada.
      */
-    public function facturaUrl(string $referencia): array
+    public function facturaUrl(string $referencia): FacturaResult
     {
         try {
             $s = $this->stripe->checkout->sessions->retrieve($referencia, [
                 'expand' => ['invoice', 'payment_intent.latest_charge'],
             ]);
             if (($s->payment_status ?? '') !== 'paid') {
-                return ['error' => 'El pago todavía no está acreditado'];
+                return FacturaResult::noDisponible('El pago todavía no está acreditado');
             }
             if (!empty($s->invoice->hosted_invoice_url)) {
-                return ['url' => $s->invoice->hosted_invoice_url, 'tipo' => 'factura', 'pdf' => $s->invoice->invoice_pdf ?? null];
+                return FacturaResult::factura($s->invoice->hosted_invoice_url, $s->invoice->invoice_pdf ?? null);
             }
             $receipt = $s->payment_intent->latest_charge->receipt_url ?? null;
-            if ($receipt) return ['url' => $receipt, 'tipo' => 'recibo'];
-            return ['error' => 'Stripe aún no emitió la factura'];
+            if ($receipt) return FacturaResult::recibo($receipt);
+            return FacturaResult::noDisponible('Stripe aún no emitió la factura');
         } catch (\Throwable $e) {
             $this->log->error("Stripe factura falló: " . $e->getMessage());
-            return ['error' => $e->getMessage()];
+            return FacturaResult::noDisponible($e->getMessage());
         }
     }
 

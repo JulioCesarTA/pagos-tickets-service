@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Tests\Application;
 
-use App\Application\Ports\Outbound\ObligacionRepositoryPort;
+use App\Application\Ports\Outbound\{IdGeneratorPort, ObligacionRepositoryPort};
 use App\Application\Services\ObligacionesProveedorService;
 use App\Domain\ObligacionProveedor;
 use PHPUnit\Framework\TestCase;
@@ -17,7 +17,17 @@ final class ObligacionesProveedorTest extends TestCase
             public function guardarSiNoExiste(ObligacionProveedor $o): ObligacionProveedor
             { return $this->filas[$o->ordenId . '|' . $o->proveedor] ??= $o; }
             public function todas(): array { return array_values($this->filas); }
+        }, new class implements IdGeneratorPort {
+            private int $n = 0;
+            public function nuevoId(): string { return 'id-' . ++$this->n; }
         });
+    }
+
+    public function test_el_id_lo_da_el_generador_de_ids(): void
+    {
+        $s = $this->servicio();
+        $this->assertSame('id-1', $s->registrar('orden-1', 'Agro Yungas', 110.0, [])->id);
+        $this->assertSame('id-2', $s->registrar('orden-2', 'Agro Yungas', 50.0, [])->id);
     }
 
     public function test_una_orden_repetida_no_duplica_la_obligacion(): void

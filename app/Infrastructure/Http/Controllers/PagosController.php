@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Infrastructure\Http\Controllers;
 
 use App\Application\Ports\Inbound\{CobrarRacionUseCase, ConsultarPagosUseCase, DevolverPagoUseCase, ObtenerFacturaUseCase, VerificarPagoUseCase};
+use App\Infrastructure\Presentation\PagosJsonMapper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -28,7 +29,7 @@ final class PagosController
                 metodo: $body['metodo'] ?? 'qr_bancario',
                 sagaId: $body['sagaId'] ?? null,
             );
-            $res->getBody()->write(json_encode($out));
+            $res->getBody()->write(json_encode(PagosJsonMapper::cobro($out)));
             return $res->withHeader('Content-Type', 'application/json');
         } catch (\Throwable $e) {
             $res->getBody()->write(json_encode(['error' => $e->getMessage()]));
@@ -74,7 +75,7 @@ final class PagosController
     /** GET /pagos/recibo/{referencia} → {url, tipo} de la factura de Stripe. */
     public function recibo(Request $req, Response $res, array $args): Response
     {
-        $out = $this->factura->execute($args['referencia']);
+        $out = PagosJsonMapper::factura($this->factura->execute($args['referencia']));
         $res->getBody()->write(json_encode($out));
         return $res->withStatus(isset($out['url']) ? 200 : 404)->withHeader('Content-Type', 'application/json');
     }
@@ -87,7 +88,7 @@ final class PagosController
      */
     public function verificar(Request $req, Response $res, array $args): Response
     {
-        $out = $this->verificarPago->execute($args['referencia']);
+        $out = PagosJsonMapper::verificacion($this->verificarPago->execute($args['referencia']));
         $res->getBody()->write(json_encode($out));
         return $res->withHeader('Content-Type', 'application/json');
     }
