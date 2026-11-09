@@ -26,6 +26,8 @@ final class Pago
         public string $estado,
         public readonly \DateTimeImmutable $createdAt,
         public ?string $ticketId = null,
+        /** Referencia del cobro en la pasarela (QR): sin ella no se puede devolver el dinero. */
+        public ?string $referenciaPasarela = null,
     ) {
         if ($monto < 0) throw new \DomainException('Monto negativo no válido');
         if (!in_array($metodo, [self::METODO_QR, self::METODO_EFECTIVO, self::METODO_BECA], true)) {
@@ -62,6 +64,24 @@ final class Pago
         }
         $this->estado = self::ESTADO_COBRADO;
         $this->ticketId = $ticketId;
+    }
+
+    /** Asocia el cobro hecho en la pasarela (solo pagos por QR), para poder devolverlo después. */
+    public function asociarReferenciaPasarela(string $referencia): void
+    {
+        if ($this->metodo !== self::METODO_QR) {
+            throw new \DomainException("Solo un pago por QR tiene referencia de pasarela (metodo=$this->metodo)");
+        }
+        if (trim($referencia) === '') {
+            throw new \DomainException('La referencia de la pasarela no puede estar vacía');
+        }
+        $this->referenciaPasarela = $referencia;
+    }
+
+    /** Un pago por QR solo se puede devolver si se sabe qué cobro deshacer en la pasarela. */
+    public function requiereDevolucionEnPasarela(): bool
+    {
+        return $this->metodo === self::METODO_QR;
     }
 
     public function fallar(): void

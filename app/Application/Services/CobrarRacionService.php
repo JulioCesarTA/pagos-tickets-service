@@ -34,6 +34,7 @@ final class CobrarRacionService implements CobrarRacionUseCase
                 $this->pagos->save($pago);
                 throw new \RuntimeException('Cobro QR fallido: ' . ($res->error ?? 'desconocido'));
             }
+            $pago->asociarReferenciaPasarela($res->referencia);   // sin esto no se podría devolver el dinero después
             $pasarela = new DatosCobroPasarela($res->paymentUrl, $res->qrDataUri, $res->referencia);
         }
 

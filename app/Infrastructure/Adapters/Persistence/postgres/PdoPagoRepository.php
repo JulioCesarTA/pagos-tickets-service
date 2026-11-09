@@ -22,21 +22,26 @@ final class PdoPagoRepository implements PagoRepositoryPort
               created_at TIMESTAMPTZ NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_pagos_reserva ON pagos(reserva_id);
+            -- Referencia del cobro en la pasarela (QR): necesaria para devolver el dinero. Nullable: los pagos
+            -- anteriores a esta columna no la tienen. ADD COLUMN IF NOT EXISTS no toca las filas existentes.
+            ALTER TABLE pagos ADD COLUMN IF NOT EXISTS referencia_pasarela TEXT NULL;
         SQL);
     }
 
     public function save(Pago $p): void
     {
         $stmt = $this->pdo->prepare(<<<SQL
-            INSERT INTO pagos (id, reserva_id, estudiante_id, monto, metodo, estado, ticket_id, created_at)
-            VALUES (:id, :r, :e, :m, :met, :est, :t, :c)
+            INSERT INTO pagos (id, reserva_id, estudiante_id, monto, metodo, estado, ticket_id, created_at, referencia_pasarela)
+            VALUES (:id, :r, :e, :m, :met, :est, :t, :c, :ref)
             ON CONFLICT (id) DO UPDATE
-            SET estado = EXCLUDED.estado, ticket_id = EXCLUDED.ticket_id
+            SET estado = EXCLUDED.estado, ticket_id = EXCLUDED.ticket_id,
+                referencia_pasarela = COALESCE(EXCLUDED.referencia_pasarela, pagos.referencia_pasarela)
         SQL);
         $stmt->execute([
             ':id' => $p->id, ':r' => $p->reservaId, ':e' => $p->estudianteId,
             ':m' => $p->monto, ':met' => $p->metodo, ':est' => $p->estado,
             ':t' => $p->ticketId, ':c' => $p->createdAt->format(DATE_ATOM),
+            ':ref' => $p->referenciaPasarela,
         ]);
     }
 
@@ -66,6 +71,7 @@ final class PdoPagoRepository implements PagoRepositoryPort
             id: $r['id'], reservaId: $r['reserva_id'], estudianteId: $r['estudiante_id'],
             monto: (float)$r['monto'], metodo: $r['metodo'], estado: $r['estado'],
             createdAt: new \DateTimeImmutable($r['created_at']), ticketId: $r['ticket_id'],
+            referenciaPasarela: $r['referencia_pasarela'] ?? null,
         );
     }
 }

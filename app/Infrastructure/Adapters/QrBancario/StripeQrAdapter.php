@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Adapters\QrBancario;
 
-use App\Application\Dto\{CobroQrResult, FacturaResult, VerificacionPagoResult};
+use App\Application\Dto\{CobroQrResult, DevolucionResult, FacturaResult, VerificacionPagoResult};
 use App\Application\Ports\Outbound\PaymentGatewayPort;
 use Endroid\QrCode\Builder\Builder;
 use Endroid\QrCode\Writer\PngWriter;
@@ -118,16 +118,39 @@ final class StripeQrAdapter implements PaymentGatewayPort
         }
     }
 
-    public function devolver(string $referencia): bool
+    /**
+     * $referencia es el id de la checkout session que devolvió cobrarQr().
+     *  - Sesión pagada: reembolso completo del PaymentIntent. La clave de idempotencia hace que un reintento
+     *    devuelva el mismo reembolso en vez de crear otro.
+     *  - Sesión abierta (no pagada): se expira, así el link ya no se puede pagar.
+     *  - Sesión expirada sin pago: no hay nada que devolver.
+     */
+    public function devolver(string $referencia): DevolucionResult
     {
         try {
-            // En producción harías refund del PaymentIntent asociado.
-            // Para demo: desactivar el payment link.
-            $this->stripe->checkout->sessions->expire($referencia);
-            return true;
+            $s = $this->stripe->checkout->sessions->retrieve($referencia);
+
+            if (($s->payment_status ?? '') === 'paid') {
+                $paymentIntent = is_string($s->payment_intent) ? $s->payment_intent : ($s->payment_intent->id ?? null);
+                if (!$paymentIntent) {
+                    return DevolucionResult::fallo("La sesión $referencia está pagada pero no tiene PaymentIntent");
+                }
+                $reembolso = $this->stripe->refunds->create(
+                    ['payment_intent' => $paymentIntent, 'metadata' => ['referencia' => $referencia]],
+                    ['idempotency_key' => "devolucion-$referencia"],
+                );
+                $this->log->info("Stripe reembolso creado: $reembolso->id ($reembolso->status) de $paymentIntent");
+                return DevolucionResult::reembolsado($reembolso->id);
+            }
+
+            if (($s->status ?? '') === 'open') {
+                $this->stripe->checkout->sessions->expire($referencia);
+                $this->log->info("Stripe sesión sin pagar anulada: $referencia");
+            }
+            return DevolucionResult::sinCobro();
         } catch (\Throwable $e) {
-            $this->log->error("Stripe refund falló: " . $e->getMessage());
-            return false;
+            $this->log->error("Stripe devolución falló: " . $e->getMessage());
+            return DevolucionResult::fallo($e->getMessage());
         }
     }
 }

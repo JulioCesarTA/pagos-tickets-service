@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Tests\Application;
 
-use App\Application\Dto\{CobroQrResult, FacturaResult, VerificacionPagoResult};
+use App\Application\Dto\{CobroQrResult, DevolucionResult, FacturaResult, VerificacionPagoResult};
 use App\Application\Ports\Outbound\{EventBusPort, IdGeneratorPort, PagoRepositoryPort, PaymentGatewayPort, TicketRepositoryPort};
 use App\Application\Services\CobrarRacionService;
 use App\Domain\{Pago, Ticket};
@@ -41,7 +41,7 @@ final class CobrarRacionTest extends TestCase
         $gateway = new class($respuestaQr ?? CobroQrResult::exito('cs_123', 'https://pagar', 'data:image/png;base64,QR')) implements PaymentGatewayPort {
             public function __construct(private CobroQrResult $r) {}
             public function cobrarQr(float $monto, string $referencia): CobroQrResult { return $this->r; }
-            public function devolver(string $referencia): bool { return true; }
+            public function devolver(string $referencia): DevolucionResult { return DevolucionResult::sinCobro(); }
             public function verificarPago(string $referencia): VerificacionPagoResult { return new VerificacionPagoResult(true, 'paid'); }
             public function facturaUrl(string $referencia): FacturaResult { return FacturaResult::noDisponible('no'); }
         };
@@ -68,6 +68,18 @@ final class CobrarRacionTest extends TestCase
         $this->assertSame('dominio-pagos', $this->eventos[0][0]);
         $this->assertSame('PagoRealizadoEvent', $this->eventos[0][1]['type']);
         $this->assertSame(0.0, $this->eventos[0][1]['monto']);
+    }
+
+    public function test_qr_guarda_la_referencia_de_la_pasarela_para_poder_devolver(): void
+    {
+        $this->servicio()->execute('r1', 'e1', 15.0, Pago::METODO_QR);
+        $this->assertSame('cs_123', $this->pagos['id-1']->referenciaPasarela);
+    }
+
+    public function test_efectivo_no_tiene_referencia_de_pasarela(): void
+    {
+        $this->servicio()->execute('r1', 'e1', 15.0, Pago::METODO_EFECTIVO);
+        $this->assertNull($this->pagos['id-1']->referenciaPasarela);
     }
 
     public function test_qr_devuelve_los_datos_de_la_pasarela(): void

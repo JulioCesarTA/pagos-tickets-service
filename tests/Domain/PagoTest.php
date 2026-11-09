@@ -60,4 +60,27 @@ final class PagoTest extends TestCase
         $this->expectException(\DomainException::class);
         new Pago('p', 'r', 'e', 1.0, 'cripto', Pago::ESTADO_PENDIENTE, new \DateTimeImmutable());
     }
+
+    public function test_pago_qr_guarda_la_referencia_de_la_pasarela(): void
+    {
+        $p = Pago::nuevo('p1', 'r1', 'e1', 12.0, Pago::METODO_QR, new \DateTimeImmutable());
+        $this->assertTrue($p->requiereDevolucionEnPasarela());
+        $p->asociarReferenciaPasarela('cs_test_123');
+        $this->assertSame('cs_test_123', $p->referenciaPasarela);
+    }
+
+    public function test_un_pago_en_efectivo_no_tiene_referencia_de_pasarela(): void
+    {
+        $p = Pago::nuevo('p1', 'r1', 'e1', 12.0, Pago::METODO_EFECTIVO, new \DateTimeImmutable());
+        $this->assertFalse($p->requiereDevolucionEnPasarela());
+        $this->expectException(\DomainException::class);
+        $p->asociarReferenciaPasarela('cs_test_123');
+    }
+
+    public function test_la_referencia_de_pasarela_no_puede_ser_vacia(): void
+    {
+        $p = Pago::nuevo('p1', 'r1', 'e1', 12.0, Pago::METODO_QR, new \DateTimeImmutable());
+        $this->expectException(\DomainException::class);
+        $p->asociarReferenciaPasarela('  ');
+    }
 }

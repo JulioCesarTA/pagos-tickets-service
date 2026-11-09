@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Tests\Application;
 
-use App\Application\Dto\{CobroQrResult, FacturaResult, VerificacionPagoResult};
+use App\Application\Dto\{CobroQrResult, DevolucionResult, FacturaResult, VerificacionPagoResult};
 use App\Application\Ports\Outbound\{PagoRepositoryPort, PaymentGatewayPort};
 use App\Application\Services\{ConsultarPagosService, ObtenerFacturaService, VerificarPagoService};
 use App\Domain\Pago;
@@ -27,7 +27,7 @@ final class ConsultasTest extends TestCase
     {
         return new class implements PaymentGatewayPort {
             public function cobrarQr(float $monto, string $referencia): CobroQrResult { return CobroQrResult::exito($referencia); }
-            public function devolver(string $referencia): bool { return true; }
+            public function devolver(string $referencia): DevolucionResult { return DevolucionResult::sinCobro(); }
             public function verificarPago(string $referencia): VerificacionPagoResult { return new VerificacionPagoResult($referencia === 'pagada', 'x'); }
             public function facturaUrl(string $referencia): FacturaResult { return $referencia === 'ok' ? FacturaResult::factura('https://f', null) : FacturaResult::noDisponible('sin factura'); }
         };

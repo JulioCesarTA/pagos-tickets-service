@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Adapters\QrBancario;
 
-use App\Application\Dto\{CobroQrResult, FacturaResult, VerificacionPagoResult};
+use App\Application\Dto\{CobroQrResult, DevolucionResult, FacturaResult, VerificacionPagoResult};
 use App\Application\Ports\Outbound\PaymentGatewayPort;
 
 /**
@@ -17,9 +17,10 @@ final class FakeQrBancarioAdapter implements PaymentGatewayPort
         return CobroQrResult::exito("QR-$referencia-" . bin2hex(random_bytes(4)));
     }
 
-    public function devolver(string $referencia): bool
+    public function devolver(string $referencia): DevolucionResult
     {
-        return true;
+        // Sin pasarela real no hay dinero que mover: el cobro simulado nunca se pagó.
+        return DevolucionResult::sinCobro();
     }
 
     public function facturaUrl(string $referencia): FacturaResult
