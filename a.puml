@@ -1,0 +1,64 @@
+@startuml Secuencia_Iniciar_Cerrar_Sesion
+title Diagrama de Secuencia - CU01: Iniciar y Cerrar Sesion
+
+skinparam sequence {
+  ArrowColor #2C3E50
+  LifeLineBorderColor #2C6CA5
+  ParticipantBorderColor #2C6CA5
+  ParticipantBackgroundColor #E8F4FD
+  ActorBorderColor #2C3E50
+}
+
+actor "Usuario" as User
+participant "Vista (LoginView)" as Vista
+participant "Controlador (AuthController)" as Ctrl
+participant "Service (AuthService)" as Svc
+participant "Repositorio (prisma.usuario)" as Repo
+
+== Iniciar Sesion ==
+
+User -> Vista : 1.1: ingresar(correo, password)
+activate Vista
+Vista -> Ctrl : 1.2: login(dto)
+activate Ctrl
+Ctrl -> Svc : 1.3: login(dto)
+activate Svc
+
+Svc -> Repo : 1.4: findUnique({ where: { correo } })
+activate Repo
+Repo --> Svc : 1.5: usuario
+deactivate Repo
+
+Svc -> Svc : 1.6: bcrypt.compare(password, hash)
+activate Svc
+Svc --> Svc : 1.7: validPassword
+deactivate Svc
+
+Svc -> Svc : 1.8: buildSession(usuario)
+activate Svc
+Svc -> Svc : 1.9: jwtService.sign({ sub, email, role })
+activate Svc
+Svc --> Svc : 1.10: accessToken
+deactivate Svc
+Svc --> Svc : 1.11: { accessToken, user }
+deactivate Svc
+
+Svc --> Ctrl : 1.12: { accessToken, user }
+deactivate Svc
+Ctrl --> Vista : 1.13: { accessToken, user }
+deactivate Ctrl
+Vista --> User : 1.14: redirige al panel principal
+deactivate Vista
+
+== Cerrar Sesion ==
+
+User -> Vista : 2.1: cerrarSesion()
+activate Vista
+Vista -> Vista : 2.2: eliminarToken()
+activate Vista
+Vista --> Vista : 2.3: ok
+deactivate Vista
+Vista --> User : 2.4: redirige a Login
+deactivate Vista
+
+@enduml

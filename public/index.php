@@ -6,6 +6,7 @@ require __DIR__ . '/../vendor/autoload.php';
 use DI\ContainerBuilder;
 use Slim\Factory\AppFactory;
 use App\Infrastructure\Http\Controllers\PagosController;
+use App\Infrastructure\Mcp\McpServer;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -29,6 +30,15 @@ $app->get('/pagos/verificar/{referencia}', [PagosController::class, 'verificar']
 $app->get('/pagos', [PagosController::class, 'listar']);
 $app->get('/pagos/recibo/{referencia}', [PagosController::class, 'recibo']);
 $app->get('/pagos/{id}',[PagosController::class, 'ver']);
+
+// Servidor MCP para los agentes de IA (JSON-RPC 2.0, sin estado). Sin stream SSE: GET responde 405.
+$app->post('/mcp', function (Request $req, Response $res) use ($container) {
+    $salida = $container->get(McpServer::class)->procesar((array)$req->getParsedBody());
+    if ($salida === null) return $res->withStatus(202);
+    $res->getBody()->write(json_encode($salida));
+    return $res->withHeader('Content-Type', 'application/json');
+});
+$app->get('/mcp', fn (Request $r, Response $s) => $s->withStatus(405));
 
 // CORS para que lo pueda llamar directo el portal (React en 3002/3000)
 $app->add(function (Request $req, $handler) {
