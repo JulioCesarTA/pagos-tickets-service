@@ -1,0 +1,26 @@
+1. Nomenclatura: Utilizar nombres descriptivos y consistentes para variables, funciones, métodos, clases y archivos.
+
+2. Formato e indentación: Mantener una estructura uniforme mediante espacios, tabulaciones, saltos de línea y organización del código.
+
+3. Comentarios y documentación: Documentar las funciones, métodos y partes importantes del código para facilitar su comprensión.
+
+4. Organización del código: Separar las responsabilidades mediante módulos, clases, funciones y componentes.
+
+5. Legibilidad: Escribir código claro, sencillo y fácil de comprender para cualquier desarrollador.
+
+6. Manejo de errores y excepciones: Implementar mecanismos adecuados para controlar errores y evitar fallos inesperados.
+
+7. Seguridad del código: Prevenir vulnerabilidades como inyección SQL, desbordamientos de memoria y validaciones incorrectas de entradas.
+
+8. Gestión de recursos: Administrar correctamente la memoria, conexiones a bases de datos, archivos y otros recursos.
+
+9. Modularidad y reutilización: Evitar duplicación de código y promover componentes reutilizables.
+
+10. Eficiencia y rendimiento: Utilizar estructuras de datos y algoritmos adecuados para optimizar el consumo de CPU y memoria.
+
+11. Consistencia: Aplicar las mismas convenciones y reglas de programación en todo el proyecto.
+
+12. Pruebas y validación: Verificar que el código funcione correctamente mediante pruebas unitarias, de integración y análisis estático.
+
+13. Mantenibilidad: Facilitar las modificaciones, correcciones y futuras ampliaciones del software.
+

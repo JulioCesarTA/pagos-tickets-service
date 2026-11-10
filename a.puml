@@ -1,0 +1,90 @@
+@startuml Secuencia_Registrar_Ingreso
+title Diagrama de Secuencia - CU06: Registrar Ingreso Vehicular con OCR
+
+skinparam sequence {
+  ArrowColor #2C3E50
+  LifeLineBorderColor #2C6CA5
+  ParticipantBorderColor #2C6CA5
+  ParticipantBackgroundColor #E8F4FD
+  ActorBorderColor #2C3E50
+}
+
+actor "Guardia" as Guardia
+participant "IngresoView" as Vista
+participant "DetectionsController" as Ctrl
+participant "DetectionsService" as Svc
+participant "VisionService" as Vision
+participant "StorageService" as Storage
+entity "PuntoAcceso" as PuntoAcceso
+entity "Vehiculo" as Vehiculo
+entity "Sancion" as Sancion
+entity "RegistroAcceso" as RegistroAcceso
+entity "Plaza" as Plaza
+
+== Reconocimiento de Placa (OCR) ==
+
+Guardia -> Vista : capturar imagen del vehiculo
+activate Vista
+Vista -> Ctrl : ocrFrame(image)
+activate Ctrl
+Ctrl -> Svc : ocrFrame(file)
+activate Svc
+Svc -> Vision : extractPlate(file)
+activate Vision
+Vision -> Vision : DetectTextCommand (AWS Rekognition)
+Vision --> Svc : { plate, confidence }
+deactivate Vision
+Svc --> Ctrl : { plate, confidence }
+deactivate Svc
+Ctrl --> Vista : { plate, confidence }
+deactivate Ctrl
+Vista --> Guardia : muestra placa detectada
+deactivate Vista
+
+== Registro de Ingreso ==
+
+Guardia -> Vista : confirmar ingreso
+activate Vista
+Vista -> Ctrl : registerEntry(dto, image)
+activate Ctrl
+Ctrl -> Svc : registerEntry(dto, file)
+activate Svc
+
+Svc -> Storage : saveImage(file)
+activate Storage
+Storage --> Svc : evidenceUrl
+deactivate Storage
+
+Svc -> PuntoAcceso : findFirst({ where: { camaraIngresoId } })
+activate PuntoAcceso
+PuntoAcceso --> Svc : puntoAcceso
+deactivate PuntoAcceso
+
+Svc -> Vehiculo : upsert({ where: { placa } })
+activate Vehiculo
+Vehiculo --> Svc : vehiculo
+deactivate Vehiculo
+
+Svc -> Sancion : findFirst({ where: { vehiculoId } })
+activate Sancion
+Sancion --> Svc : activeSanction = null
+deactivate Sancion
+
+Svc -> RegistroAcceso : create({ estado: 'ingreso' })
+activate RegistroAcceso
+RegistroAcceso --> Svc : registro
+deactivate RegistroAcceso
+
+Svc -> Plaza : update({ estado: 'ocupada' })
+activate Plaza
+Plaza --> Svc : plaza
+deactivate Plaza
+
+Svc --> Ctrl : { placa, evidenceUrl, vehicle, estado: 'ingreso' }
+deactivate Svc
+Ctrl --> Vista : ingreso registrado
+deactivate Ctrl
+Vista --> Guardia : muestra confirmacion
+deactivate Vista
+
+@enduml
