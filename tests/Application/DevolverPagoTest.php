@@ -4,9 +4,9 @@ declare(strict_types=1);
 namespace Tests\Application;
 
 use App\Application\Dto\{CobroQrResult, DevolucionResult, FacturaResult, VerificacionPagoResult};
-use App\Application\Ports\Outbound\{EventBusPort, PagoRepositoryPort, PaymentGatewayPort};
-use App\Application\Services\DevolverPagoService;
-use App\Domain\Pago;
+use App\Application\Ports\Outbound\{EventBusPort, IdGeneratorPort, PagoRepositoryPort, PaymentGatewayPort, TicketRepositoryPort};
+use App\Application\Services\{CompletarCobro, DevolverPagoService};
+use App\Domain\{Pago, Ticket};
 use ArrayObject;
 use PHPUnit\Framework\TestCase;
 
@@ -30,6 +30,7 @@ final class DevolverPagoTest extends TestCase
             public function __construct(private ArrayObject $datos) {}
             public function save(Pago $pago): void { $this->datos[$pago->id] = $pago; }
             public function findById(string $id): ?Pago { return $this->datos[$id] ?? null; }
+            public function findByReferenciaPasarela(string $referencia): ?Pago { return null; }
             public function todos(): array { return array_values($this->datos->getArrayCopy()); }
             public function delEstudiante(string $estudianteId): array { return []; }
         };
@@ -44,7 +45,22 @@ final class DevolverPagoTest extends TestCase
             public function __construct(private ArrayObject $eventos) {}
             public function publish(string $topic, array $payload): void { $this->eventos->append([$topic, $payload]); }
         };
-        return new DevolverPagoService($pagos, $gateway, $bus);
+        $tickets = new class implements TicketRepositoryPort {
+            public function save(Ticket $t): void {}
+            public function findById(string $id): ?Ticket { return null; }
+        };
+        $ids = new class implements IdGeneratorPort {
+            public function nuevoId(): string { return 't-nuevo'; }
+        };
+        return new DevolverPagoService($pagos, $gateway, $bus, new CompletarCobro($pagos, $tickets, $bus, $ids));
+    }
+
+    private function pagoQrPendiente(): Pago
+    {
+        $p = Pago::nuevo('p1', 'r1', 'e1', 12.0, Pago::METODO_QR, new \DateTimeImmutable());
+        $p->asociarReferenciaPasarela('cs_test_pendiente');
+        $this->pagos['p1'] = $p;
+        return $p;
     }
 
     private function pagoCobrado(string $metodo, ?string $referencia): Pago
@@ -99,6 +115,24 @@ final class DevolverPagoTest extends TestCase
         $this->servicio(DevolucionResult::sinCobro())->execute('p1');
         $this->assertSame(Pago::ESTADO_DEVUELTO, $this->pagos['p1']->estado);
         $this->assertNull($this->eventos[0][1]['reembolsoId']);
+    }
+
+    public function test_qr_pendiente_que_nadie_pago_se_anula_sin_registrar_ingreso(): void
+    {
+        $this->pagoQrPendiente();
+        $this->servicio(DevolucionResult::sinCobro())->execute('p1');
+        $this->assertSame(['cs_test_pendiente'], $this->llamadas->getArrayCopy(), 'debe vencer la sesión en la pasarela');
+        $this->assertSame(Pago::ESTADO_FALLIDO, $this->pagos['p1']->estado);
+        $this->assertSame(['PagoAnuladoEvent'], array_map(fn ($e) => $e[1]['type'], $this->eventos->getArrayCopy()));
+    }
+
+    public function test_qr_pendiente_que_alcanzo_a_pagarse_se_cobra_y_se_devuelve(): void
+    {
+        $this->pagoQrPendiente();
+        $this->servicio(DevolucionResult::reembolsado('re_456'))->execute('p1');
+        $this->assertSame(Pago::ESTADO_DEVUELTO, $this->pagos['p1']->estado);
+        $this->assertSame(['PagoRealizadoEvent', 'PagoDevueltoEvent'], array_map(fn ($e) => $e[1]['type'], $this->eventos->getArrayCopy()));
+        $this->assertSame('re_456', $this->eventos[1][1]['reembolsoId']);
     }
 
     public function test_efectivo_se_devuelve_sin_tocar_la_pasarela(): void

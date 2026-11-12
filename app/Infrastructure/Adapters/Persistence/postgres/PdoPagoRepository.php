@@ -25,7 +25,16 @@ final class PdoPagoRepository implements PagoRepositoryPort
             -- Referencia del cobro en la pasarela (QR): necesaria para devolver el dinero. Nullable: los pagos
             -- anteriores a esta columna no la tienen. ADD COLUMN IF NOT EXISTS no toca las filas existentes.
             ALTER TABLE pagos ADD COLUMN IF NOT EXISTS referencia_pasarela TEXT NULL;
+            CREATE INDEX IF NOT EXISTS idx_pagos_referencia ON pagos(referencia_pasarela);
         SQL);
+    }
+
+    public function findByReferenciaPasarela(string $referencia): ?Pago
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM pagos WHERE referencia_pasarela = :ref ORDER BY created_at DESC LIMIT 1');
+        $stmt->execute([':ref' => $referencia]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? $this->mapar($row) : null;
     }
 
     public function save(Pago $p): void

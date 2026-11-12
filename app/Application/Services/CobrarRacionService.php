@@ -5,63 +5,42 @@ namespace App\Application\Services;
 
 use App\Application\Dto\{CobroRacionResult, DatosCobroPasarela};
 use App\Application\Ports\Inbound\CobrarRacionUseCase;
-use App\Application\Ports\Outbound\{EventBusPort, IdGeneratorPort, PagoRepositoryPort, PaymentGatewayPort, TicketRepositoryPort};
-use App\Domain\{Pago, Ticket};
+use App\Application\Ports\Outbound\{IdGeneratorPort, PagoRepositoryPort, PaymentGatewayPort};
+use App\Domain\Pago;
 
 /**
- * Paso 3 de la Saga 1: aplica beca o cobra, emite ticket.
+ * Paso 3 de la Saga 1: aplica beca o cobra.
+ *  - Beca o efectivo: se cobra en el acto (ticket + PagoRealizadoEvent).
+ *  - QR bancario: se crea el cobro en la pasarela y el pago queda PENDIENTE. Se cobra recién cuando la pasarela
+ *    confirma que el estudiante pagó (VerificarPagoService). Así un QR generado y abandonado no cuenta como ingreso.
  */
 final class CobrarRacionService implements CobrarRacionUseCase
 {
     public function __construct(
         private readonly PagoRepositoryPort $pagos,
-        private readonly TicketRepositoryPort $tickets,
         private readonly PaymentGatewayPort $gateway,
-        private readonly EventBusPort $bus,
         private readonly IdGeneratorPort $ids,
+        private readonly CompletarCobro $completar,
     ) {}
 
     public function execute(string $reservaId, string $estudianteId, float $monto, string $metodo, ?string $sagaId = null): CobroRacionResult
     {
         $pago = Pago::nuevo($this->ids->nuevoId(), $reservaId, $estudianteId, $monto, $metodo, new \DateTimeImmutable());
 
-        // Si es QR bancario, cobra en la pasarela de pagos externa.
-        $pasarela = null;
-        if ($metodo === Pago::METODO_QR) {
-            $res = $this->gateway->cobrarQr($pago->monto, $pago->id);
-            if (!$res->ok) {
-                $pago->fallar();
-                $this->pagos->save($pago);
-                throw new \RuntimeException('Cobro QR fallido: ' . ($res->error ?? 'desconocido'));
-            }
-            $pago->asociarReferenciaPasarela($res->referencia);   // sin esto no se podría devolver el dinero después
-            $pasarela = new DatosCobroPasarela($res->paymentUrl, $res->qrDataUri, $res->referencia);
+        if ($metodo !== Pago::METODO_QR) {
+            $ticketId = $this->completar->ejecutar($pago, $sagaId);
+            return new CobroRacionResult($pago->id, $ticketId, $pago->estado, null);
         }
 
-        $ticket = new Ticket(
-            id: $this->ids->nuevoId(),
-            pagoId: $pago->id,
-            reservaId: $reservaId,
-            monto: $pago->monto,
-            emitidoEn: new \DateTimeImmutable(),
-        );
-
-        $pago->cobrar($ticket->id);
+        $res = $this->gateway->cobrarQr($pago->monto, $pago->id);
+        if (!$res->ok) {
+            $pago->fallar();
+            $this->pagos->save($pago);
+            throw new \RuntimeException('Cobro QR fallido: ' . ($res->error ?? 'desconocido'));
+        }
+        $pago->asociarReferenciaPasarela($res->referencia);   // con ella se verifica y, si hace falta, se devuelve
         $this->pagos->save($pago);
-        $this->tickets->save($ticket);
-
-        $this->bus->publish('dominio-pagos', [
-            'type' => 'PagoRealizadoEvent',
-            'sagaId' => $sagaId,
-            'pagoId' => $pago->id,
-            'reservaId' => $reservaId,
-            'estudianteId' => $estudianteId,
-            'monto' => $pago->monto,
-            'metodo' => $metodo,
-            'ticketId' => $ticket->id,
-        ]);
-
-        // $pasarela es null si no es QR; con URL + QR + referencia si sí.
-        return new CobroRacionResult($pago->id, $ticket->id, $pago->estado, $pasarela);
+        return new CobroRacionResult($pago->id, null, $pago->estado,
+            new DatosCobroPasarela($res->paymentUrl, $res->qrDataUri, $res->referencia));
     }
 }

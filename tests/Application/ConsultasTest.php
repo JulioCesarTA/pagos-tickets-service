@@ -4,9 +4,9 @@ declare(strict_types=1);
 namespace Tests\Application;
 
 use App\Application\Dto\{CobroQrResult, DevolucionResult, FacturaResult, VerificacionPagoResult};
-use App\Application\Ports\Outbound\{PagoRepositoryPort, PaymentGatewayPort};
-use App\Application\Services\{ConsultarPagosService, ObtenerFacturaService, VerificarPagoService};
-use App\Domain\Pago;
+use App\Application\Ports\Outbound\{EventBusPort, IdGeneratorPort, PagoRepositoryPort, PaymentGatewayPort, TicketRepositoryPort};
+use App\Application\Services\{CompletarCobro, ConsultarPagosService, ObtenerFacturaService, VerificarPagoService};
+use App\Domain\{Pago, Ticket};
 use PHPUnit\Framework\TestCase;
 
 /** Los casos de uso se prueban solos: con adaptadores falsos, sin base de datos ni pasarela real. */
@@ -18,6 +18,7 @@ final class ConsultasTest extends TestCase
             public function __construct(private array $datos) {}
             public function save(Pago $pago): void { $this->datos[] = $pago; }
             public function findById(string $id): ?Pago { foreach ($this->datos as $p) if ($p->id === $id) return $p; return null; }
+            public function findByReferenciaPasarela(string $referencia): ?Pago { return null; }
             public function todos(): array { return $this->datos; }
             public function delEstudiante(string $estudianteId): array { return array_values(array_filter($this->datos, fn ($p) => $p->estudianteId === $estudianteId)); }
         };
@@ -59,6 +60,13 @@ final class ConsultasTest extends TestCase
         $sin = (new ObtenerFacturaService($this->pasarela()))->execute('otra');
         $this->assertFalse($sin->disponible());
         $this->assertSame('sin factura', $sin->error);
-        $this->assertTrue((new VerificarPagoService($this->pasarela()))->execute('pagada')->paid);
+        $completar = new CompletarCobro($this->repo(),
+            new class implements TicketRepositoryPort {
+                public function save(Ticket $t): void {}
+                public function findById(string $id): ?Ticket { return null; }
+            },
+            new class implements EventBusPort { public function publish(string $topic, array $payload): void {} },
+            new class implements IdGeneratorPort { public function nuevoId(): string { return 'x'; } });
+        $this->assertTrue((new VerificarPagoService($this->pasarela(), $this->repo(), $completar))->execute('pagada')->paid);
     }
 }

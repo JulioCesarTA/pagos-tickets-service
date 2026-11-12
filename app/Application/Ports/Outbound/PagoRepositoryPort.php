@@ -9,6 +9,9 @@ interface PagoRepositoryPort
 {
     public function save(Pago $pago): void;
     public function findById(string $id): ?Pago;
+
+    /** El pago asociado a un cobro de la pasarela (la checkout session de Stripe), o null. */
+    public function findByReferenciaPasarela(string $referencia): ?Pago;
     /** @return Pago[] todos los pagos, del más antiguo al más reciente */
     public function todos(): array;
 

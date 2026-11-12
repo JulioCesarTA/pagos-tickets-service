@@ -15,7 +15,7 @@ final class PagosJsonMapper
     /** Clave pública histórica del bloque de la pasarela en la respuesta de cobro. */
     public const CLAVE_PASARELA = 'stripe';
 
-    /** @return array{pagoId:string, ticketId:string, estado:string, stripe:?array{paymentUrl:?string, qrDataUri:?string, gatewayRef:?string}} */
+    /** @return array{pagoId:string, ticketId:?string, estado:string, stripe:?array{paymentUrl:?string, qrDataUri:?string, gatewayRef:?string}} */
     public static function cobro(CobroRacionResult $r): array
     {
         $p = $r->pasarela;
